@@ -136,7 +136,59 @@ public:
 protected:
     virtual void nodeSwap( AVLNode<Key,Value>* n1, AVLNode<Key,Value>* n2);
 
-    // Add helper functions here
+    using TreeNode = AVLNode<Key, Value>;
+
+    void replaceChild(TreeNode* parent, TreeNode* oldChild, TreeNode* newChild)
+    {
+        if (parent == nullptr) this->root_ = newChild;
+        else if (parent->getLeft() == oldChild) parent->setLeft(newChild);
+        else parent->setRight(newChild);
+        if (newChild != nullptr) newChild->setParent(parent);
+    }
+
+    TreeNode* rotateLeft(TreeNode* node)
+    {
+        auto* pivot = node->getRight();
+        auto* middle = pivot->getLeft();
+        replaceChild(node->getParent(), node, pivot);
+        node->setRight(middle);
+        if (middle != nullptr) middle->setParent(node);
+        pivot->setLeft(node);
+        node->setParent(pivot);
+
+        int pivotBalance = pivot->getBalance();
+        int balance = node->getBalance() - 1 - (pivotBalance > 0 ? pivotBalance : 0);
+        node->setBalance(balance);
+        pivot->setBalance(pivotBalance - 1 + (balance < 0 ? balance : 0));
+        return pivot;
+    }
+
+    TreeNode* rotateRight(TreeNode* node)
+    {
+        auto* pivot = node->getLeft();
+        auto* middle = pivot->getRight();
+        replaceChild(node->getParent(), node, pivot);
+        node->setLeft(middle);
+        if (middle != nullptr) middle->setParent(node);
+        pivot->setRight(node);
+        node->setParent(pivot);
+
+        int pivotBalance = pivot->getBalance();
+        int balance = node->getBalance() + 1 - (pivotBalance < 0 ? pivotBalance : 0);
+        node->setBalance(balance);
+        pivot->setBalance(pivotBalance + 1 + (balance > 0 ? balance : 0));
+        return pivot;
+    }
+
+    TreeNode* rebalance(TreeNode* node)
+    {
+        if (node->getBalance() == -2) {
+            if (node->getLeft()->getBalance() > 0) rotateLeft(node->getLeft());
+            return rotateRight(node);
+        }
+        if (node->getRight()->getBalance() < 0) rotateRight(node->getRight());
+        return rotateLeft(node);
+    }
 
 
 };
@@ -148,7 +200,37 @@ protected:
 template<class Key, class Value>
 void AVLTree<Key, Value>::insert (const std::pair<const Key, Value> &new_item)
 {
-    // TODO
+    TreeNode* parent = nullptr;
+    auto* current = static_cast<TreeNode*>(this->root_);
+    while (current != nullptr) {
+        parent = current;
+        if (new_item.first < current->getKey()) current = current->getLeft();
+        else if (current->getKey() < new_item.first) current = current->getRight();
+        else {
+            current->setValue(new_item.second);
+            return;
+        }
+    }
+
+    auto* node = new TreeNode(new_item.first, new_item.second, parent);
+    if (parent == nullptr) {
+        this->root_ = node;
+        return;
+    }
+    if (new_item.first < parent->getKey()) parent->setLeft(node);
+    else parent->setRight(node);
+
+    while (parent != nullptr) {
+        parent->updateBalance(node == parent->getLeft() ? -1 : 1);
+        int balance = parent->getBalance();
+        if (balance == 0) return;
+        if (balance == -2 || balance == 2) {
+            rebalance(parent);
+            return;
+        }
+        node = parent;
+        parent = parent->getParent();
+    }
 }
 
 /*
@@ -158,7 +240,26 @@ void AVLTree<Key, Value>::insert (const std::pair<const Key, Value> &new_item)
 template<class Key, class Value>
 void AVLTree<Key, Value>:: remove(const Key& key)
 {
-    // TODO
+    auto* node = static_cast<TreeNode*>(this->internalFind(key));
+    if (node == nullptr) return;
+    if (node->getLeft() != nullptr && node->getRight() != nullptr) {
+        nodeSwap(node, static_cast<TreeNode*>(this->predecessor(node)));
+    }
+    auto* parent = node->getParent();
+    auto* child = node->getLeft() != nullptr ? node->getLeft() : node->getRight();
+    int change = parent != nullptr && node == parent->getLeft() ? 1 : -1;
+    replaceChild(parent, node, child);
+    delete node;
+
+    while (parent != nullptr) {
+        parent->updateBalance(change);
+        int balance = parent->getBalance();
+        if (balance == -2 || balance == 2) parent = rebalance(parent);
+        if (parent->getBalance() != 0) return;
+        auto* subtree = parent;
+        parent = subtree->getParent();
+        change = parent != nullptr && subtree == parent->getLeft() ? 1 : -1;
+    }
 }
 
 template<class Key, class Value>
